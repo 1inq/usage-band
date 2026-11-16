@@ -1,0 +1,6 @@
+{
+  "name": "usage-band",
+  "owner": { "name": "1inq" },
+  "description": "Usage Band: context, cache and rate-limit meters above the Claude Code prompt",
+  "plugins": [{ "name": "usage-band", "source": "./" }]
+}

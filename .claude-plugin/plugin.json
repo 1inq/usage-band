@@ -1,0 +1,9 @@
+{
+  "name": "usage-band",
+  "version": "0.1.0",
+  "description": "Band above the prompt: context, cache, 5h session and weekly limits",
+  "author": { "name": "1inq" },
+  "license": "MIT",
+  "repository": "https://github.com/1inq/usage-band",
+  "types": "./types/index.d.ts"
+}
