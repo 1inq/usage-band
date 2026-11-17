@@ -13,8 +13,9 @@ const WINDOWS: Record<string, { label: string; short: string; ms: number; ticks:
   seven_day: { label: 'Week', short: 'Wk', ms: 7 * 24 * HOUR, ticks: 7 },
 }
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const TRACK = '#4a4c5e'
-const MARKER = '#7b9cf2'
+const TRACK = 'rgba(128,128,128,0.35)'
+const TICK = 'rgba(128,128,128,0.9)'
+const MARKER = '#3b82f6'
 
 const ZERO: Cache = { read: 0, write: 0, input: 0, output: 0, lastRead: 0, lastIn: 0, lastAt: 0 }
 const usage = atom({ plugin: 'usage-band', key: 'usage' } as const, null)
@@ -30,7 +31,7 @@ const pick = (u: Usage): Usage => ({
 })
 
 const k = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : `${n}`)
-const level = (pct: number) => (pct >= 90 ? '#e5736b' : pct >= 70 ? '#e6c46a' : '#8fd18f')
+const level = (pct: number) => (pct >= 90 ? '#e5484d' : pct >= 70 ? '#e0a100' : '#30a46c')
 const pad = (n: number) => String(n).padStart(2, '0')
 const left = (ms: number) => {
   const m = Math.max(0, Math.round(ms / 60_000))
@@ -50,7 +51,7 @@ const svgBar = (pct: number, ticks: number, marker?: number, W = 520, H = 8, str
   const p = Math.max(0, Math.min(1, pct / 100))
   const line = (x: number, color: string, w: number, op = 1) =>
     `<line x1="${x}" y1="0" x2="${x}" y2="${H}" stroke="${color}" stroke-width="${w}" opacity="${op}" vector-effect="non-scaling-stroke"/>`
-  const lines = Array.from({ length: Math.max(0, ticks - 1) }, (_, i) => line(((i + 1) * W) / ticks, '#2c2e3a', 1.5, 0.7)).join('')
+  const lines = Array.from({ length: Math.max(0, ticks - 1) }, (_, i) => line(((i + 1) * W) / ticks, TICK, 1.5)).join('')
   const m = marker === undefined ? '' : line(Math.min(W - 1, Math.max(1, marker * W)), MARKER, 2)
   const fit = stretch ? ' preserveAspectRatio="none"' : ''
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"${fit}>
@@ -187,7 +188,7 @@ export const register: Register = on => {
 
     // compact: one row of 4 small bars, label and percent beside each
     const small = (x: Cell) => (
-      <Box flexDirection="row" alignItems="center" gap="xs" flexGrow={1}>
+      <Box flexDirection="row" alignItems="center" gap="xs" flexGrow={1} flexShrink={1} minWidth={0}>
         <Box flexShrink={0}>
           <Text size="caption">
             <Text weight="semibold">{x.short}</Text> <Text color={level(x.pct)}>{Math.round(x.pct)}%</Text>
@@ -215,8 +216,8 @@ export const register: Register = on => {
       <Box flexDirection="row" alignItems="flex-end" justifyContent="space-between" gap="sm" width="100%">
         {compact ? (
           <Box flexDirection="row" alignItems="center" gap="md" flexGrow={1} minWidth={0}>
-            <Box flexShrink={1} minWidth={0} overflow="hidden">
-              <Text size="caption" dimColor wrap="truncate-end">{metaShort}</Text>
+            <Box flexShrink={0}>
+              <Text size="caption" dimColor>{metaShort}</Text>
             </Box>
             {cells.map(small)}
           </Box>
