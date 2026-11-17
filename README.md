@@ -2,6 +2,12 @@
 
 A Claude Code mod that adds a compact band above the prompt showing how much room you have left:
 
+![Usage Band, expanded](docs/expanded.png)
+
+Collapsed, it shrinks to a single row:
+
+![Usage Band, collapsed](docs/compact.png)
+
 | Meter | What it shows |
 |---|---|
 | **Context** | Context window fill, tokens used / window size |
