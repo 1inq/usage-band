@@ -9,6 +9,8 @@ A Claude Code mod that adds a compact band above the prompt showing how much roo
 | **Session** | 5-hour rate-limit window: % used, time to reset, reset clock time |
 | **Week** | 7-day rate-limit window: % used, time to reset, reset day and time |
 
+Under the meters a dim line shows the current **model**, the **git branch** of the session's folder and the number of **uncommitted files** (`clean` when none, `no git` outside a repository). It refreshes after each turn and once a minute.
+
 Bars turn yellow at 70% and red at 90%. On the Session and Week bars a blue marker shows how much of the window's *time* has passed — if the fill is left of the marker, you are using it slower than the clock.
 
 The **▾ / ▴** button on the right collapses the band to a single row of four small bars (`Ctx`, `Cache`, `5h`, `Wk`) and back.

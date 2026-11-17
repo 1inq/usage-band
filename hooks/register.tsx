@@ -1,7 +1,9 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { Cache, Usage } from '../types'
+import type { EngineInterface } from 'claude-code'
+
+import type { Cache, Info, Usage } from '../types'
 
 // ponytail: fixed 1h TTL (Claude Code's prompt cache on subscriptions); 5 min on plain API keys
 const CACHE_TTL = 60 * 60_000
@@ -17,6 +19,7 @@ const MARKER = '#7b9cf2'
 const ZERO: Cache = { read: 0, write: 0, input: 0, output: 0, lastRead: 0, lastIn: 0, lastAt: 0 }
 const usage = atom({ plugin: 'usage-band', key: 'usage' } as const, null)
 const cache = atom({ plugin: 'usage-band', key: 'cache' } as const, ZERO)
+const info = atom({ plugin: 'usage-band', key: 'info' } as const, null as Info | null)
 const isCompact = atom({ plugin: 'usage-band', key: 'isCompact' } as const, false)
 
 const pick = (u: Usage): Usage => ({
@@ -59,6 +62,24 @@ const textBar = (pct: number, w = 20) => {
   return '█'.repeat(f) + '░'.repeat(w - f)
 }
 
+// model + git branch + uncommitted file count (outside a repo: branch undefined)
+const refreshInfo = async ($: EngineInterface) => {
+  const model = await $.session.model()
+  let branch: string | undefined
+  let dirty = 0
+  try {
+    const b = await $.process.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], { timeoutMs: 5000 })
+    if (b.exitCode === 0) {
+      branch = b.stdout.trim()
+      const st = await $.process.run(['git', 'status', '--porcelain'], { timeoutMs: 5000 })
+      dirty = st.stdout.split('\n').filter(Boolean).length
+    }
+  } catch {
+    // git missing or timed out: show the model alone
+  }
+  await update($, info, () => ({ model, branch, dirty }))
+}
+
 type Cell = { label: string; short: string; pct: number; info: string; ticks: number; marker?: number }
 
 export const register: Register = on => {
@@ -68,7 +89,11 @@ export const register: Register = on => {
     void $.session.usage().then(u => update($, usage, () => pick(u)))
     // redraw once a minute so countdowns move between turns
     timer?.cancel()
-    timer = $.clock.every(60_000, () => $.ui.invalidate('ui.render'))
+    void refreshInfo($)
+    timer = $.clock.every(60_000, () => {
+      $.ui.invalidate('ui.render')
+      void refreshInfo($)
+    })
     return next(e)
   })
 
@@ -92,6 +117,7 @@ export const register: Register = on => {
         lastAt: now,
       }))
     }
+    void refreshInfo($)
     return next(e)
   })
 
@@ -104,6 +130,7 @@ export const register: Register = on => {
     const ui = $.ui.resolve(e)
     const { Box, Text, Button } = ui
     const compact = await read($, isCompact)
+    const meta = await read($, info)
 
     const ctxPct = u.context.percent ?? 0
     const hit = c.lastIn ? Math.round((c.lastRead / c.lastIn) * 100) : 0
@@ -185,6 +212,14 @@ export const register: Register = on => {
             [cells.slice(0, 2), cells.slice(2)].map(row => (
               <Box flexDirection="row" gap="lg">{row.map(cell)}</Box>
             ))
+          )}
+          {meta && (
+            <Text size="caption" dimColor>
+              {meta.model}
+              {meta.branch === undefined
+                ? '  ·  no git'
+                : `  ·  ⎇ ${meta.branch}  ·  ${meta.dirty ? `${meta.dirty} uncommitted` : 'clean'}`}
+            </Text>
           )}
         </Box>
         <Button
