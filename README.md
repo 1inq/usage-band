@@ -35,6 +35,21 @@ In the desktop app, where `/plugin` does not run: click **+** next to the prompt
 
 Answer `y` to add the marketplace, then pick a scope (user scope loads it in every session).
 
+## Update
+
+Updates are delivered by version: each release bumps `version` in `.claude-plugin/plugin.json`, and Claude picks it up from this repository.
+
+- **Terminal session:** `/plugin` → **Marketplaces** → `usage-band` → update (or toggle auto-update there), then restart the session.
+- **Desktop app:** **+** next to the prompt box → **Plugins** → update `usage-band`.
+- **Shell:**
+
+```bash
+claude plugin marketplace update usage-band
+claude plugin update usage-band
+```
+
+A restart applies the new version.
+
 ## Notes
 
 - Rate limits (Session / Week) are reported only on a Claude subscription, and only after the first response of a session. Until then the band shows `no data`.
