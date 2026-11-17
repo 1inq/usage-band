@@ -15,7 +15,7 @@ Bars turn yellow at 70% and red at 90%. On the Session and Week bars a blue mark
 
 The **▾ / ▴** button on the right collapses the band to a single row of four small bars (`Ctx`, `Cache`, `5h`, `Wk`) and back.
 
-Works in the Claude Code desktop app (SVG bars) and in the terminal (text bars).
+Works in the Claude Code desktop app (SVG bars) and in the terminal (text bars `████░░░┃░░` sized to the window width, with the blue `┃` marking elapsed time).
 
 ## Install
 

@@ -58,9 +58,20 @@ const svgBar = (pct: number, ticks: number, marker?: number, W = 520, H = 8, str
 <clipPath id="c"><rect width="${W}" height="${H}" rx="${stretch ? 0 : H / 2}"/></clipPath>
 <g clip-path="url(#c)"><rect width="${W}" height="${H}" fill="${TRACK}"/><rect width="${W * p}" height="${H}" fill="${level(pct)}"/>${lines}${m}</g></svg>`
 }
-const textBar = (pct: number, w = 20) => {
-  const f = Math.max(0, Math.min(w, Math.round((pct / 100) * w)))
-  return '█'.repeat(f) + '░'.repeat(w - f)
+// Terminal bar as runs of [text, kind]: fill, track, and a marker cell (elapsed time)
+type Run = [string, 'fill' | 'track' | 'marker']
+const barRuns = (pct: number, w: number, marker?: number): Run[] => {
+  const filled = Math.max(0, Math.min(w, Math.round((pct / 100) * w)))
+  const at = marker === undefined ? -1 : Math.max(0, Math.min(w - 1, Math.floor(marker * w)))
+  const runs: Run[] = []
+  for (let i = 0; i < w; i++) {
+    const kind = i === at ? 'marker' : i < filled ? 'fill' : 'track'
+    const ch = kind === 'marker' ? '┃' : kind === 'fill' ? '█' : '░'
+    const last = runs[runs.length - 1]
+    if (last && last[1] === kind) last[0] += ch
+    else runs.push([ch, kind])
+  }
+  return runs
 }
 
 // model + git branch + uncommitted file count (outside a repo: branch undefined)
@@ -130,6 +141,15 @@ export const register: Register = on => {
     const now = await $.clock.now()
     const ui = $.ui.resolve(e)
     const { Box, Text, Button } = ui
+    const isTerm = !('Svg' in ui)
+    const cols = e.props.bodyColumns
+    const bar = (x: Cell, w: number) => (
+      <Text>
+        {barRuns(x.pct, Math.max(3, w), x.marker).map(([t, kind]) =>
+          kind === 'track' ? <Text dimColor>{t}</Text> : <Text color={kind === 'marker' ? MARKER : level(x.pct)}>{t}</Text>,
+        )}
+      </Text>
+    )
     const compact = await read($, isCompact)
     const meta = await read($, info)
 
@@ -170,8 +190,11 @@ export const register: Register = on => {
       })
     }
 
+    // terminal: cells get fixed widths from the band's columns so the bars fill the row
+    const BTN = 6
+    const wideW = Math.floor((cols - BTN - 3) / 2)
     const cell = (x: Cell) => (
-      <Box flexDirection="column" flexGrow={1}>
+      <Box flexDirection="column" flexGrow={1} width={isTerm ? wideW : undefined}>
         <Box flexDirection="row" justifyContent="space-between">
           <Text>
             <Text weight="semibold">{x.label}</Text> <Text color={level(x.pct)}>{Math.round(x.pct)}%</Text>
@@ -181,14 +204,24 @@ export const register: Register = on => {
         {'Svg' in ui ? (
           <ui.Svg source={svgBar(x.pct, x.ticks, x.marker)} alt={`${x.label} ${Math.round(x.pct)}%`} />
         ) : (
-          <Text color={level(x.pct)}>{textBar(x.pct)}</Text>
+          bar(x, wideW)
         )}
       </Box>
     )
 
     // compact: one row of 4 small bars, label and percent beside each
+    const metaText = !meta
+      ? ''
+      : meta.branch === undefined
+        ? `${meta.model}  ·  no git`
+        : `${meta.model}  ·  ⎇ ${meta.branch}  ·  ${meta.dirty ? `${meta.dirty} uncommitted` : 'clean'}`
+    // compact: short form so everything stays on one row
+    const metaShort = !meta ? '' : meta.branch === undefined ? meta.model : `${meta.model} ⎇ ${meta.branch}${meta.dirty ? ` ±${meta.dirty}` : ''}`
+
+    const gaps = 2 * 4
+    const smallW = Math.floor((cols - BTN - gaps - metaShort.length - 1) / 4)
     const small = (x: Cell) => (
-      <Box flexDirection="row" alignItems="center" gap="xs" flexGrow={1} flexShrink={1} minWidth={0}>
+      <Box flexDirection="row" alignItems="center" gap="xs" flexGrow={1} flexShrink={1} minWidth={0} width={isTerm ? smallW : undefined}>
         <Box flexShrink={0}>
           <Text size="caption">
             <Text weight="semibold">{x.short}</Text> <Text color={level(x.pct)}>{Math.round(x.pct)}%</Text>
@@ -198,19 +231,11 @@ export const register: Register = on => {
           {'Svg' in ui ? (
             <ui.Svg source={svgBar(x.pct, x.ticks, x.marker, 1000, 5, true)} height={5} alt={`${x.label} ${Math.round(x.pct)}%`} />
           ) : (
-            <Text color={level(x.pct)}>{textBar(x.pct, 5)}</Text>
+            bar(x, smallW - `${x.short} ${Math.round(x.pct)}%`.length - 1)
           )}
         </Box>
       </Box>
     )
-
-    const metaText = !meta
-      ? ''
-      : meta.branch === undefined
-        ? `${meta.model}  ·  no git`
-        : `${meta.model}  ·  ⎇ ${meta.branch}  ·  ${meta.dirty ? `${meta.dirty} uncommitted` : 'clean'}`
-    // compact: short form so everything stays on one row
-    const metaShort = !meta ? '' : meta.branch === undefined ? meta.model : `${meta.model} ⎇ ${meta.branch}${meta.dirty ? ` ±${meta.dirty}` : ''}`
 
     return (
       <Box flexDirection="row" alignItems="flex-end" justifyContent="space-between" gap="sm" width="100%">
