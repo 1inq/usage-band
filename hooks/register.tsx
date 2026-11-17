@@ -203,25 +203,31 @@ export const register: Register = on => {
       </Box>
     )
 
+    const metaText = !meta
+      ? ''
+      : meta.branch === undefined
+        ? `${meta.model}  ·  no git`
+        : `${meta.model}  ·  ⎇ ${meta.branch}  ·  ${meta.dirty ? `${meta.dirty} uncommitted` : 'clean'}`
+    // compact: short form so everything stays on one row
+    const metaShort = !meta ? '' : meta.branch === undefined ? meta.model : `${meta.model} ⎇ ${meta.branch}${meta.dirty ? ` ±${meta.dirty}` : ''}`
+
     return (
       <Box flexDirection="row" alignItems="flex-end" justifyContent="space-between" gap="sm" width="100%">
-        <Box flexDirection="column" gap="sm" flexGrow={1}>
-          {compact ? (
-            <Box flexDirection="row" gap="md">{cells.map(small)}</Box>
-          ) : (
-            [cells.slice(0, 2), cells.slice(2)].map(row => (
+        {compact ? (
+          <Box flexDirection="row" alignItems="center" gap="md" flexGrow={1} minWidth={0}>
+            <Box flexShrink={1} minWidth={0} overflow="hidden">
+              <Text size="caption" dimColor wrap="truncate-end">{metaShort}</Text>
+            </Box>
+            {cells.map(small)}
+          </Box>
+        ) : (
+          <Box flexDirection="column" gap="sm" flexGrow={1}>
+            {[cells.slice(0, 2), cells.slice(2)].map(row => (
               <Box flexDirection="row" gap="lg">{row.map(cell)}</Box>
-            ))
-          )}
-          {meta && (
-            <Text size="caption" dimColor>
-              {meta.model}
-              {meta.branch === undefined
-                ? '  ·  no git'
-                : `  ·  ⎇ ${meta.branch}  ·  ${meta.dirty ? `${meta.dirty} uncommitted` : 'clean'}`}
-            </Text>
-          )}
-        </Box>
+            ))}
+            {meta && <Text size="caption" dimColor>{metaText}</Text>}
+          </Box>
+        )}
         <Button
           key="toggle"
           label={compact ? '▴' : '▾'}
