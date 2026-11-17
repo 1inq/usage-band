@@ -16,6 +16,10 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const TRACK = 'rgba(128,128,128,0.35)'
 const TICK = 'rgba(128,128,128,0.9)'
 const MARKER = '#3b82f6'
+const MODEL_C = '#6ea8fe'
+const BRANCH_C = '#c792ea'
+const ADD_C = '#7ee787'
+const DEL_C = '#ff8c8c'
 
 const ZERO: Cache = { read: 0, write: 0, input: 0, output: 0, lastRead: 0, lastIn: 0, lastAt: 0 }
 const usage = atom({ plugin: 'usage-band', key: 'usage' } as const, null)
@@ -74,22 +78,46 @@ const barRuns = (pct: number, w: number, marker?: number): Run[] => {
   return runs
 }
 
-// model + git branch + uncommitted file count (outside a repo: branch undefined)
+// model + git branch + changed lines vs HEAD (outside a repo: branch undefined)
+const sumNumstat = (out: string) => {
+  let added = 0
+  let removed = 0
+  for (const line of out.split('\n')) {
+    const [a, d] = line.split('\t')
+    added += Number(a) || 0 // binary files read "-": counted 0
+    removed += Number(d) || 0
+  }
+  return { added, removed }
+}
+
 const refreshInfo = async ($: EngineInterface) => {
   const model = await $.session.model()
   let branch: string | undefined
-  let dirty = 0
+  let added = 0
+  let removed = 0
+  let files = 0
   try {
-    const b = await $.process.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], { timeoutMs: 5000 })
+    const run = (argv: string[]) => $.process.run(argv, { timeoutMs: 5000 })
+    const b = await run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'])
     if (b.exitCode === 0) {
       branch = b.stdout.trim()
-      const st = await $.process.run(['git', 'status', '--porcelain'], { timeoutMs: 5000 })
-      dirty = st.stdout.split('\n').filter(Boolean).length
+      // staged + unstaged against HEAD; a repo with no commit yet has no HEAD, so add the two diffs
+      const d = await run(['git', 'diff', 'HEAD', '--numstat'])
+      if (d.exitCode === 0) {
+        ;({ added, removed } = sumNumstat(d.stdout))
+      } else {
+        const staged = sumNumstat((await run(['git', 'diff', '--cached', '--numstat'])).stdout)
+        const loose = sumNumstat((await run(['git', 'diff', '--numstat'])).stdout)
+        added = staged.added + loose.added
+        removed = staged.removed + loose.removed
+      }
+      // files, untracked included, so a tree with only new files is not "clean"
+      files = (await run(['git', 'status', '--porcelain'])).stdout.split('\n').filter(Boolean).length
     }
   } catch {
     // git missing or timed out: show the model alone
   }
-  await update($, info, () => ({ model, branch, dirty }))
+  await update($, info, () => ({ model, branch, added, removed, files }))
 }
 
 type Cell = { label: string; short: string; pct: number; info: string; ticks: number; marker?: number }
@@ -141,7 +169,8 @@ export const register: Register = on => {
     const now = await $.clock.now()
     const ui = $.ui.resolve(e)
     const { Box, Text, Button } = ui
-    const isTerm = !('Svg' in ui)
+    // the terminal's table lists Svg but draws it empty, so go by the surface, not the table
+    const isTerm = e.surface === 'terminal'
     const cols = e.props.bodyColumns
     const bar = (x: Cell, w: number) => (
       <Text>
@@ -201,7 +230,7 @@ export const register: Register = on => {
           </Text>
           <Text dimColor>{x.info}</Text>
         </Box>
-        {'Svg' in ui ? (
+        {!isTerm && 'Svg' in ui ? (
           <ui.Svg source={svgBar(x.pct, x.ticks, x.marker)} alt={`${x.label} ${Math.round(x.pct)}%`} />
         ) : (
           bar(x, wideW)
@@ -210,16 +239,28 @@ export const register: Register = on => {
     )
 
     // compact: one row of 4 small bars, label and percent beside each
-    const metaText = !meta
-      ? ''
-      : meta.branch === undefined
-        ? `${meta.model}  ·  no git`
-        : `${meta.model}  ·  ⎇ ${meta.branch}  ·  ${meta.dirty ? `${meta.dirty} uncommitted` : 'clean'}`
-    // compact: short form so everything stays on one row
-    const metaShort = !meta ? '' : meta.branch === undefined ? meta.model : `${meta.model} ⎇ ${meta.branch}${meta.dirty ? ` ±${meta.dirty}` : ''}`
+    // info line as [text, color] parts (no color = dim), so length and drawing share one source
+    type Part = [string, string | undefined]
+    const infoParts = (sep: string): Part[] => {
+      if (!meta) return []
+      const parts: Part[] = [[meta.model, MODEL_C]]
+      if (meta.branch === undefined) return [...parts, [`${sep}no git`, undefined]]
+      parts.push([sep, undefined], [`⎇ ${meta.branch}`, BRANCH_C], [sep, undefined])
+      if (meta.added || meta.removed) parts.push([`+${meta.added}`, ADD_C], [' ', undefined], [`-${meta.removed}`, DEL_C])
+      else parts.push([meta.files ? `${meta.files} untracked` : 'clean', undefined])
+      return parts
+    }
+    const infoText = (parts: Part[]) => (
+      <Text size="caption">
+        {parts.map(([t, c]) => (c ? <Text color={c}>{t}</Text> : <Text dimColor>{t}</Text>))}
+      </Text>
+    )
+    const wide = infoParts('  ·  ')
+    const short = infoParts(' ')
+    const metaLen = short.reduce((n, [t]) => n + t.length, 0)
 
     const gaps = 2 * 4
-    const smallW = Math.floor((cols - BTN - gaps - metaShort.length - 1) / 4)
+    const smallW = Math.floor((cols - BTN - gaps - metaLen - 1) / 4)
     const small = (x: Cell) => (
       <Box flexDirection="row" alignItems="center" gap="xs" flexGrow={1} flexShrink={1} minWidth={0} width={isTerm ? smallW : undefined}>
         <Box flexShrink={0}>
@@ -228,7 +269,7 @@ export const register: Register = on => {
           </Text>
         </Box>
         <Box flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
-          {'Svg' in ui ? (
+          {!isTerm && 'Svg' in ui ? (
             <ui.Svg source={svgBar(x.pct, x.ticks, x.marker, 1000, 5, true)} height={5} alt={`${x.label} ${Math.round(x.pct)}%`} />
           ) : (
             bar(x, smallW - `${x.short} ${Math.round(x.pct)}%`.length - 1)
@@ -242,7 +283,7 @@ export const register: Register = on => {
         {compact ? (
           <Box flexDirection="row" alignItems="center" gap="md" flexGrow={1} minWidth={0}>
             <Box flexShrink={0}>
-              <Text size="caption" dimColor>{metaShort}</Text>
+              {infoText(short)}
             </Box>
             {cells.map(small)}
           </Box>
@@ -251,7 +292,7 @@ export const register: Register = on => {
             {[cells.slice(0, 2), cells.slice(2)].map(row => (
               <Box flexDirection="row" gap="lg">{row.map(cell)}</Box>
             ))}
-            {meta && <Text size="caption" dimColor>{metaText}</Text>}
+            {meta && infoText(wide)}
           </Box>
         )}
         <Button

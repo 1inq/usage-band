@@ -15,13 +15,13 @@ Collapsed, it shrinks to a single row:
 | **Session** | 5-hour rate-limit window: % used, time to reset, reset clock time |
 | **Week** | 7-day rate-limit window: % used, time to reset, reset day and time |
 
-Under the meters a dim line shows the current **model**, the **git branch** of the session's folder and the number of **uncommitted files** (`clean` when none, `no git` outside a repository). It refreshes after each turn and once a minute.
+Under the meters (or at the left of the single row when collapsed) a colored info line shows the current **model**, the **git branch** of the session's folder and the **changed lines** against `HEAD`: light-green `+added`, light-red `-removed` (staged and unstaged; `clean` when nothing changed, `N untracked` for new files only, `no git` outside a repository). It refreshes after each turn and once a minute.
 
 Bars turn yellow at 70% and red at 90%. On the Session and Week bars a blue marker shows how much of the window's *time* has passed — if the fill is left of the marker, you are using it slower than the clock.
 
 The **▾ / ▴** button on the right collapses the band to a single row of four small bars (`Ctx`, `Cache`, `5h`, `Wk`) and back.
 
-Works in the Claude Code desktop app (SVG bars) and in the terminal (text bars `████░░░┃░░` sized to the window width, with the blue `┃` marking elapsed time).
+Works in the Claude Code desktop app (SVG bars) and in the terminal (text bars `████░░░┃░░` sized to the window width, with the blue `┃` marking elapsed time). Tested on both surfaces: `claude plugin test .`.
 
 ## Install
 
