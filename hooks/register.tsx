@@ -15,7 +15,7 @@ const WINDOWS: Record<string, { label: string; short: string; ms: number; ticks:
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const TRACK = 'rgba(128,128,128,0.35)'
 const TICK = 'rgba(128,128,128,0.9)'
-const MARKER = '#3b82f6'
+const MARKER = '#60a5fa'
 const MODEL_C = '#6ea8fe'
 const BRANCH_C = '#c792ea'
 const ADD_C = '#7ee787'
@@ -36,6 +36,8 @@ const pick = (u: Usage): Usage => ({
 
 const k = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : `${n}`)
 const level = (pct: number) => (pct >= 90 ? '#e5484d' : pct >= 70 ? '#e0a100' : '#30a46c')
+// cache hit rate is the opposite of usage: high is good
+const good = (pct: number) => (pct >= 70 ? '#30a46c' : pct >= 40 ? '#e0a100' : '#e5484d')
 const pad = (n: number) => String(n).padStart(2, '0')
 const left = (ms: number) => {
   const m = Math.max(0, Math.round(ms / 60_000))
@@ -50,17 +52,22 @@ const at = (iso: string, withDay: boolean) => {
 }
 
 // SVG bar: track, fill, tick separators, optional "elapsed time" marker.
-// stretch: the bar fills its slot; ticks/marker keep 1.5/2px via non-scaling strokes
-const svgBar = (pct: number, ticks: number, marker?: number, W = 520, H = 8, stretch = false) => {
+// The bar is inset by PAD above and below so the marker stands taller than it, with a dark halo
+// that keeps it visible on light and dark themes. stretch: the bar fills its slot; strokes stay
+// 1.5/2px via non-scaling strokes.
+const PAD = 2
+const svgBar = (pct: number, color: string, ticks: number, marker?: number, W = 520, H = 8, stretch = false) => {
   const p = Math.max(0, Math.min(1, pct / 100))
-  const line = (x: number, color: string, w: number, op = 1) =>
-    `<line x1="${x}" y1="0" x2="${x}" y2="${H}" stroke="${color}" stroke-width="${w}" opacity="${op}" vector-effect="non-scaling-stroke"/>`
-  const lines = Array.from({ length: Math.max(0, ticks - 1) }, (_, i) => line(((i + 1) * W) / ticks, TICK, 1.5)).join('')
-  const m = marker === undefined ? '' : line(Math.min(W - 1, Math.max(1, marker * W)), MARKER, 2)
+  const T = H + 2 * PAD
+  const line = (x: number, y1: number, y2: number, c: string, w: number) =>
+    `<line x1="${x}" y1="${y1}" x2="${x}" y2="${y2}" stroke="${c}" stroke-width="${w}" vector-effect="non-scaling-stroke"/>`
+  const lines = Array.from({ length: Math.max(0, ticks - 1) }, (_, i) => line(((i + 1) * W) / ticks, PAD, PAD + H, TICK, 1.5)).join('')
+  const mx = marker === undefined ? 0 : Math.min(W - 1, Math.max(1, marker * W))
+  const m = marker === undefined ? '' : line(mx, 0, T, 'rgba(0,0,0,0.55)', 4) + line(mx, 0, T, MARKER, 2)
   const fit = stretch ? ' preserveAspectRatio="none"' : ''
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"${fit}>
-<clipPath id="c"><rect width="${W}" height="${H}" rx="${stretch ? 0 : H / 2}"/></clipPath>
-<g clip-path="url(#c)"><rect width="${W}" height="${H}" fill="${TRACK}"/><rect width="${W * p}" height="${H}" fill="${level(pct)}"/>${lines}${m}</g></svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${T}" viewBox="0 0 ${W} ${T}"${fit}>
+<clipPath id="c"><rect y="${PAD}" width="${W}" height="${H}" rx="${stretch ? 0 : H / 2}"/></clipPath>
+<g clip-path="url(#c)"><rect y="${PAD}" width="${W}" height="${H}" fill="${TRACK}"/><rect y="${PAD}" width="${W * p}" height="${H}" fill="${color}"/>${lines}</g>${m}</svg>`
 }
 // Terminal bar as runs of [text, kind]: fill, track, and a marker cell (elapsed time)
 type Run = [string, 'fill' | 'track' | 'marker']
@@ -120,7 +127,7 @@ const refreshInfo = async ($: EngineInterface) => {
   await update($, info, () => ({ model, branch, added, removed, files }))
 }
 
-type Cell = { label: string; short: string; pct: number; info: string; ticks: number; marker?: number }
+type Cell = { label: string; short: string; color: string; pct: number; info: string; ticks: number; marker?: number }
 
 export const register: Register = on => {
   let timer: { cancel: () => void } | undefined
@@ -175,7 +182,7 @@ export const register: Register = on => {
     const bar = (x: Cell, w: number) => (
       <Text>
         {barRuns(x.pct, Math.max(3, w), x.marker).map(([t, kind]) =>
-          kind === 'track' ? <Text dimColor>{t}</Text> : <Text color={kind === 'marker' ? MARKER : level(x.pct)}>{t}</Text>,
+          kind === 'track' ? <Text dimColor>{t}</Text> : <Text color={kind === 'marker' ? MARKER : x.color}>{t}</Text>,
         )}
       </Text>
     )
@@ -189,6 +196,7 @@ export const register: Register = on => {
     const cells: Cell[] = [
       {
         label: 'Context',
+        color: level(ctxPct),
         short: 'Ctx',
         pct: ctxPct,
         info: `${k(u.context.tokens ?? 0)} / ${k(u.context.window)}`,
@@ -196,6 +204,7 @@ export const register: Register = on => {
       },
       {
         label: 'Cache',
+        color: good(hit),
         short: 'Cache',
         pct: hit,
         info: !c.lastAt ? '—' : ttlLeft > 0 ? `warm · ${left(ttlLeft)}` : 'cold',
@@ -205,13 +214,14 @@ export const register: Register = on => {
     for (const [kind, w] of Object.entries(WINDOWS)) {
       const r = u.rateLimits.find(x => x.kind === kind)
       if (!r) {
-        cells.push({ label: w.label, short: w.short, pct: 0, info: 'no data', ticks: w.ticks })
+        cells.push({ label: w.label, short: w.short, color: level(0), pct: 0, info: 'no data', ticks: w.ticks })
         continue
       }
       const rest = r.resetsAt ? Date.parse(r.resetsAt) - now : undefined
       cells.push({
         label: w.label,
         short: w.short,
+        color: level(r.percentUsed),
         pct: r.percentUsed,
         info: r.resetsAt && rest !== undefined ? `↻ ${left(rest)} · ${at(r.resetsAt, kind !== 'five_hour')}` : '',
         ticks: w.ticks,
@@ -226,12 +236,12 @@ export const register: Register = on => {
       <Box flexDirection="column" flexGrow={1} width={isTerm ? wideW : undefined}>
         <Box flexDirection="row" justifyContent="space-between">
           <Text>
-            <Text weight="semibold">{x.label}</Text> <Text color={level(x.pct)}>{Math.round(x.pct)}%</Text>
+            <Text weight="semibold">{x.label}</Text> <Text color={x.color}>{Math.round(x.pct)}%</Text>
           </Text>
           <Text dimColor>{x.info}</Text>
         </Box>
         {!isTerm && 'Svg' in ui ? (
-          <ui.Svg source={svgBar(x.pct, x.ticks, x.marker)} alt={`${x.label} ${Math.round(x.pct)}%`} />
+          <ui.Svg source={svgBar(x.pct, x.color, x.ticks, x.marker)} alt={`${x.label} ${Math.round(x.pct)}%`} />
         ) : (
           bar(x, wideW)
         )}
@@ -265,12 +275,12 @@ export const register: Register = on => {
       <Box flexDirection="row" alignItems="center" gap="xs" flexGrow={1} flexShrink={1} minWidth={0} width={isTerm ? smallW : undefined}>
         <Box flexShrink={0}>
           <Text size="caption">
-            <Text weight="semibold">{x.short}</Text> <Text color={level(x.pct)}>{Math.round(x.pct)}%</Text>
+            <Text weight="semibold">{x.short}</Text> <Text color={x.color}>{Math.round(x.pct)}%</Text>
           </Text>
         </Box>
         <Box flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
           {!isTerm && 'Svg' in ui ? (
-            <ui.Svg source={svgBar(x.pct, x.ticks, x.marker, 1000, 5, true)} height={5} alt={`${x.label} ${Math.round(x.pct)}%`} />
+            <ui.Svg source={svgBar(x.pct, x.color, x.ticks, x.marker, 1000, 5, true)} height={5 + 2 * PAD} alt={`${x.label} ${Math.round(x.pct)}%`} />
           ) : (
             bar(x, smallW - `${x.short} ${Math.round(x.pct)}%`.length - 1)
           )}
