@@ -41,6 +41,16 @@ In the desktop app, where `/plugin` does not run: click **+** next to the prompt
 
 Answer `y` to add the marketplace, then pick a scope (user scope loads it in every session).
 
+## Commands
+
+| Command | What it does |
+|---|---|
+| `/usage-band` | Toggles the collapsed / expanded view (same as the ▾ / ▴ button) |
+| `/usage-band cli-on` | Shows the band in the terminal (default) |
+| `/usage-band cli-off` | Hides the band in the terminal; the desktop app is not affected |
+
+The terminal switch is remembered between sessions.
+
 ## Update
 
 Updates are delivered by version: each release bumps `version` in `.claude-plugin/plugin.json`, and Claude picks it up from this repository.

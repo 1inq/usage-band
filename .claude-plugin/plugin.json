@@ -1,6 +1,6 @@
 {
   "name": "usage-band",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Band above the prompt: context, cache, 5h session and weekly limits",
   "author": { "name": "1inq" },
   "license": "MIT",

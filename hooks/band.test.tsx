@@ -25,7 +25,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
       on('clock.now', () => ({ value: 1_000_000 }))
       on('state.get', (_, e) => {
         const key = (e as { key?: string }).key
-        const value = key === 'usage' ? USAGE : key === 'cache' ? CACHE : key === 'info' ? INFO : key === 'isCompact' ? isCompact : null
+        const value = key === 'usage' ? USAGE : key === 'cache' ? CACHE : key === 'info' ? INFO : key === 'isCliOn' ? true : key === 'isCompact' ? isCompact : null
         return { value: { value, version: 1 } }
       })
       const { isCompact: _c, ...mount } = band(surface, isCompact, 100)
@@ -41,3 +41,20 @@ for (const surface of ['terminal', 'desktop'] as const) {
     })
   }
 }
+
+test('cli-off hides the band in the terminal only', async ($, on) => {
+  on('clock.now', () => ({ value: 1_000_000 }))
+  on('state.get', (_, e) => {
+    const key = (e as { key?: string }).key
+    const value = key === 'usage' ? USAGE : key === 'cache' ? CACHE : key === 'info' ? INFO : key === 'isCliOn' ? false : key === 'isCompact' ? false : null
+    return { value: { value, version: 1 } }
+  })
+  const { isCompact: _c, ...term } = band('terminal', false, 100)
+  const { isCompact: _d, ...desk } = band('desktop', false, 100)
+  const t = await $.ui.mount(term as never)
+  expect(await t.find({ type: 'Text', text: /Context/ })).toBeUndefined()
+  await t.unmount()
+  const d = await $.ui.mount(desk as never)
+  expect((await d.find({ type: 'Text', text: /Context/ }))?.text).toContain('Context')
+  await d.unmount()
+})

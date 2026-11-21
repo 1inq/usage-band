@@ -9,6 +9,6 @@ export type Usage = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'usage-band': { usage: Usage | null; cache: Cache; isCompact: boolean; info: Info | null }
+    'usage-band': { usage: Usage | null; cache: Cache; isCompact: boolean; isCliOn: boolean; info: Info | null }
   }
 }

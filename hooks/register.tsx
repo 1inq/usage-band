@@ -25,6 +25,7 @@ const ZERO: Cache = { read: 0, write: 0, input: 0, output: 0, lastRead: 0, lastI
 const usage = atom({ plugin: 'usage-band', key: 'usage' } as const, null)
 const cache = atom({ plugin: 'usage-band', key: 'cache' } as const, ZERO)
 const info = atom({ plugin: 'usage-band', key: 'info' } as const, null as Info | null)
+const isCliOn = atom({ plugin: 'usage-band', key: 'isCliOn' } as const, true)
 const isCompact = atom({ plugin: 'usage-band', key: 'isCompact' } as const, false)
 
 const pick = (u: Usage): Usage => ({
@@ -133,6 +134,14 @@ export const register: Register = on => {
   let timer: { cancel: () => void } | undefined
 
   on('session.start', async ($, e, next) => {
+    await $.command.register({
+      name: 'usage-band',
+      description: 'Usage Band: toggle compact view; cli-on / cli-off show or hide it in the terminal',
+      argumentHint: '[cli-on|cli-off]',
+    })
+    // the terminal switch outlives the session: restore it from the store
+    const saved = await $.store.get('isCliOn')
+    if (typeof saved === 'boolean') await update($, isCliOn, () => saved)
     void $.session.usage().then(u => update($, usage, () => pick(u)))
     // redraw once a minute so countdowns move between turns
     timer?.cancel()
@@ -142,6 +151,19 @@ export const register: Register = on => {
       void refreshInfo($)
     })
     return next(e)
+  })
+
+  on('command.run', { command: 'usage-band' }, async ($, e) => {
+    const arg = e.args.trim().toLowerCase()
+    if (arg === 'cli-on' || arg === 'cli-off') {
+      const isOn = arg === 'cli-on'
+      await $.store.set('isCliOn', isOn)
+      await update($, isCliOn, () => isOn)
+      return { text: `Usage Band in the terminal: ${isOn ? 'on' : 'off'}.` }
+    }
+    if (arg !== '') return { text: `Unknown option "${arg}". Use /usage-band, /usage-band cli-on or /usage-band cli-off.` }
+    const compact = await update($, isCompact, v => !v)
+    return { text: `Usage Band: ${compact ? 'compact' : 'expanded'} view. (/usage-band cli-on | cli-off switches the terminal band.)` }
   })
 
   on('session.measure', async ($, e, next) => {
@@ -187,6 +209,7 @@ export const register: Register = on => {
       </Text>
     )
     const compact = await read($, isCompact)
+    if (e.surface === 'terminal' && !(await read($, isCliOn))) return next(e)
     const meta = await read($, info)
 
     const ctxPct = u.context.percent ?? 0
