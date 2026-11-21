@@ -26,6 +26,7 @@ const usage = atom({ plugin: 'usage-band', key: 'usage' } as const, null)
 const cache = atom({ plugin: 'usage-band', key: 'cache' } as const, ZERO)
 const info = atom({ plugin: 'usage-band', key: 'info' } as const, null as Info | null)
 const isCliOn = atom({ plugin: 'usage-band', key: 'isCliOn' } as const, true)
+const isHidden = atom({ plugin: 'usage-band', key: 'isHidden' } as const, false)
 const isCompact = atom({ plugin: 'usage-band', key: 'isCompact' } as const, false)
 
 const pick = (u: Usage): Usage => ({
@@ -136,12 +137,14 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'usage-band',
-      description: 'Usage Band: toggle compact view; cli-on / cli-off show or hide it in the terminal',
-      argumentHint: '[cli-on|cli-off]',
+      description: 'Usage Band: toggle compact view; status prints the numbers; hide / show; cli-on / cli-off for the terminal',
+      argumentHint: '[status|hide|show|cli-on|cli-off]',
     })
     // the terminal switch outlives the session: restore it from the store
     const saved = await $.store.get('isCliOn')
     if (typeof saved === 'boolean') await update($, isCliOn, () => saved)
+    const hidden = await $.store.get('isHidden')
+    if (typeof hidden === 'boolean') await update($, isHidden, () => hidden)
     void $.session.usage().then(u => update($, usage, () => pick(u)))
     // redraw once a minute so countdowns move between turns
     timer?.cancel()
@@ -161,7 +164,36 @@ export const register: Register = on => {
       await update($, isCliOn, () => isOn)
       return { text: `Usage Band in the terminal: ${isOn ? 'on' : 'off'}.` }
     }
-    if (arg !== '') return { text: `Unknown option "${arg}". Use /usage-band, /usage-band cli-on or /usage-band cli-off.` }
+    if (arg === 'hide' || arg === 'show') {
+      const isOn = arg === 'hide'
+      await $.store.set('isHidden', isOn)
+      await update($, isHidden, () => isOn)
+      return { text: `Usage Band ${isOn ? 'hidden (/usage-band show brings it back)' : 'shown'}.` }
+    }
+    if (arg === 'status') {
+      const u = await read($, usage)
+      const c = await read($, cache)
+      const meta = await read($, info)
+      if (!u) return { text: 'Usage Band: no data yet, waiting for the first response.' }
+      const now = await $.clock.now()
+      const lines = [`Context   ${u.context.percent ?? 0}%  (${k(u.context.tokens ?? 0)} / ${k(u.context.window)} tokens)`]
+      const hit = c.lastIn ? Math.round((c.lastRead / c.lastIn) * 100) : 0
+      const ttl = c.lastAt ? CACHE_TTL - (now - c.lastAt) : 0
+      lines.push(`Cache     ${hit}% hit  (${!c.lastAt ? 'no data' : ttl > 0 ? `warm, ${left(ttl)} left` : 'cold'})`)
+      for (const [kind, w] of Object.entries(WINDOWS)) {
+        const r = u.rateLimits.find(x => x.kind === kind)
+        const when = r?.resetsAt ? `  (resets in ${left(Date.parse(r.resetsAt) - now)}, ${at(r.resetsAt, kind !== 'five_hour')})` : ''
+        lines.push(`${w.label.padEnd(9)} ${r ? `${Math.round(r.percentUsed)}%${when}` : 'no data'}`)
+      }
+      if (u.cost) lines.push(`Cost      $${u.cost.usd.toFixed(2)}`)
+      if (meta) {
+        const changes = meta.added || meta.removed ? `+${meta.added} -${meta.removed}` : meta.files ? `${meta.files} untracked` : 'clean'
+        lines.push(`Model     ${meta.model}`)
+        lines.push(`Git       ${meta.branch === undefined ? 'no git' : `${meta.branch}  ${changes}`}`)
+      }
+      return { text: lines.join('\n') }
+    }
+    if (arg !== '') return { text: `Unknown option "${arg}". Use /usage-band [status|hide|show|cli-on|cli-off].` }
     const compact = await update($, isCompact, v => !v)
     return { text: `Usage Band: ${compact ? 'compact' : 'expanded'} view. (/usage-band cli-on | cli-off switches the terminal band.)` }
   })
@@ -209,6 +241,7 @@ export const register: Register = on => {
       </Text>
     )
     const compact = await read($, isCompact)
+    if (await read($, isHidden)) return next(e)
     if (e.surface === 'terminal' && !(await read($, isCliOn))) return next(e)
     const meta = await read($, info)
 

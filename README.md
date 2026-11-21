@@ -49,7 +49,11 @@ Answer `y` to add the marketplace, then pick a scope (user scope loads it in eve
 | `/usage-band cli-on` | Shows the band in the terminal (default) |
 | `/usage-band cli-off` | Hides the band in the terminal; the desktop app is not affected |
 
-The terminal switch is remembered between sessions.
+| `/usage-band status` | Prints the numbers as text in the chat: context, cache, 5h and week limits, cost, model, git |
+| `/usage-band hide` | Hides the band everywhere (terminal and desktop) |
+| `/usage-band show` | Brings the band back |
+
+The terminal switch and hide/show are remembered between sessions.
 
 ## Update
 

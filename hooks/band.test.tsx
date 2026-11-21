@@ -58,3 +58,31 @@ test('cli-off hides the band in the terminal only', async ($, on) => {
   expect((await d.find({ type: 'Text', text: /Context/ }))?.text).toContain('Context')
   await d.unmount()
 })
+
+test('hide removes the band on every surface', async ($, on) => {
+  on('clock.now', () => ({ value: 1_000_000 }))
+  on('state.get', (_, e) => {
+    const key = (e as { key?: string }).key
+    const value = key === 'usage' ? USAGE : key === 'cache' ? CACHE : key === 'info' ? INFO : key === 'isHidden' ? true : key === 'isCliOn' ? true : key === 'isCompact' ? false : null
+    return { value: { value, version: 1 } }
+  })
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const { isCompact: _c, ...m } = band(surface, false, 100)
+    const ui = await $.ui.mount(m as never)
+    expect(await ui.find({ type: 'Text', text: /Context/ })).toBeUndefined()
+    await ui.unmount()
+  }
+})
+
+test('status prints the numbers', async ($, on) => {
+  on('clock.now', () => ({ value: 1_000_000 }))
+  on('state.get', (_, e) => {
+    const key = (e as { key?: string }).key
+    const value = key === 'usage' ? USAGE : key === 'cache' ? CACHE : key === 'info' ? INFO : null
+    return { value: { value, version: 1 } }
+  })
+  const out = await $.command.run({ command: 'usage-band', args: 'status' })
+  expect(out.text).toContain('Context   18%')
+  expect(out.text).toContain('Cache     100% hit')
+  expect(out.text).toMatch(/Git +main +\+12 -3/)
+})
